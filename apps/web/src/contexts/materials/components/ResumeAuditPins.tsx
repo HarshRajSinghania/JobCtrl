@@ -3248,10 +3248,30 @@ export function ResumePlateEditor({
   }, [draft?.latestRevision?.plateDocument, htmlState]);
   const [currentPlateValue, setCurrentPlateValue] = useState<Value | null>(initialPlateValue);
 
+  const reviewDocumentIdentity = draft ? `${draft.draftId}:${draft.baseGeneration}` : artifactId;
+  const savedDocument = useRef({ identity: reviewDocumentIdentity, signature: resumePlateValueSignature(initialPlateValue) });
+  const submittedDocument = useRef<{ identity: string; signature: string } | null>(null);
   useEffect(() => {
-    setCurrentPlateValue(initialPlateValue);
-    setDraftSourceVersion((currentVersion) => currentVersion + 1);
-  }, [initialPlateValue]);
+    const signature = resumePlateValueSignature(initialPlateValue);
+    const previous = savedDocument.current;
+    if (previous.identity === reviewDocumentIdentity && previous.signature === signature) return;
+    savedDocument.current = { identity: reviewDocumentIdentity, signature };
+    // Only the initial revision-zero arrival continues the current artifact's
+    // editing session; identical saved documents in another draft still reset it.
+    if (previous.identity === artifactId && draft?.latestRevisionNumber === 0 && previous.signature === signature) return;
+    // A saved response acknowledges its snapshot, not edits typed after it.
+    // Comment-only publications and identical acknowledgements never remount
+    // Plate, preserving formatting, focus and selection in the live document.
+    const currentSignature = resumePlateValueSignature(currentPlateValue);
+    const acknowledgesSubmission = submittedDocument.current?.identity === reviewDocumentIdentity
+      && submittedDocument.current.signature === signature;
+    if (previous.identity !== reviewDocumentIdentity || (!acknowledgesSubmission && currentSignature === previous.signature)) {
+      if (currentSignature !== signature) {
+        setCurrentPlateValue(initialPlateValue);
+        setDraftSourceVersion((currentVersion) => currentVersion + 1);
+      }
+    }
+  }, [artifactId, currentPlateValue, draft?.latestRevisionNumber, initialPlateValue, reviewDocumentIdentity]);
 
   const currentDraftText = useMemo(
     () => (currentPlateValue ? resumeTextFromPlateValue(currentPlateValue) : ""),
@@ -3265,6 +3285,14 @@ export function ResumePlateEditor({
     () => resumePlateValueSignature(currentPlateValue),
     [currentPlateValue],
   );
+  const handleSaveDraft = useCallback((source: "autosave" | "manual") => {
+    if (!currentPlateValue || !onSaveDraft) return;
+    submittedDocument.current = {
+      identity: reviewDocumentIdentity,
+      signature: resumePlateValueSignature(normalizeResumePlateValue(currentPlateValue)),
+    };
+    onSaveDraft({ editedText: currentDraftText, plateDocument: currentPlateValue, source });
+  }, [currentDraftText, currentPlateValue, onSaveDraft, reviewDocumentIdentity]);
   const documentKey = `${artifactId}:${draft?.draftId ?? "no-draft"}:${htmlUrl ?? "no-html"}:${draftSourceVersion}:${editorVersion}`;
   const canFormat = formattingApiReady && Boolean(currentPlateValue);
   const draftDirty = Boolean(currentPlateValue && currentDraftSignature !== initialDraftSignature);
@@ -3410,11 +3438,7 @@ export function ResumePlateEditor({
     const handle = window.setTimeout(() => {
       if (!currentPlateValue || lastAutosaveSignature.current === currentDraftSignature) return;
       lastAutosaveSignature.current = currentDraftSignature;
-      onSaveDraft({
-        editedText: currentDraftText,
-        plateDocument: currentPlateValue,
-        source: "autosave",
-      });
+      handleSaveDraft("autosave");
     }, autosaveDelayMs);
     return () => window.clearTimeout(handle);
   }, [
@@ -3425,6 +3449,7 @@ export function ResumePlateEditor({
     draft,
     draftDirty,
     draftLoading,
+    handleSaveDraft,
     onSaveDraft,
     savePending,
   ]);
@@ -3486,14 +3511,7 @@ export function ResumePlateEditor({
           disabled={saveDisabled}
           size="sm"
           type="button"
-          onClick={() => {
-            if (!currentPlateValue) return;
-            onSaveDraft?.({
-              editedText: currentDraftText,
-              plateDocument: currentPlateValue,
-              source: "manual",
-            });
-          }}
+          onClick={() => handleSaveDraft("manual")}
         >
           Save draft
         </Button>
