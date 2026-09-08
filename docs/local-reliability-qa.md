@@ -710,6 +710,29 @@ any generator call, keep the durable attempt count unchanged, and report the
 role, required count, and ceiling. Never run this check against a real
 application or submit anything.
 
+For candidate evaluation, use scripted generation and voice responses through
+the real Materials use case. Count plan/profile-evidence construction once per
+execution and provenance, grounding, fit, coverage and text assembly once per
+candidate. No voice or a no-op voice reply must reuse the accepted evidence;
+changed voice text must receive fresh deterministic and paid review. A rejected
+rewrite retains the base text, provenance and verdict, with a separate voice
+audit. Assert that the final artifact bytes come from the evaluated normalized
+payload and that final fit retains its `post_voice_shipped` lifecycle label.
+A fabricated high-fit candidate must make zero judge/adversarial calls. Follow
+a fabricated or judge-rejected candidate with invalid JSON and prove the run
+stays rejected, its history remains inspectable, and the previous accepted
+artifact bytes survive. Retain the transaction and render-failure fixtures that
+protect the previous accepted generation and provenance.
+Also return parsed JSON with `skill_category_updates: null` before a valid
+candidate: field validation must reject it before assembly, preserve its audit
+and continue bounded repair. Exhausting that malformed response must leave the
+previous accepted artifact intact. Read the rejected `.txt` for both missing
+required fields and malformed nested fields: it must contain the selected JSON
+and validation errors, with nonzero registered size, without invoking assembly
+on invalid fields. A changed voice rewrite in lenient mode must
+retain `SKIPPED` with reason `lenient_validation_mode` in both voice and final
+judge metadata, without judge/adversarial calls or paid-model attribution.
+
 For direct URL import, exercise the Jobs-page dialog through the product API
 and worker boundary. A readable JSON-LD posting must create one canonical job,
 refresh the list, and open that job. A custom careers page with an individual
