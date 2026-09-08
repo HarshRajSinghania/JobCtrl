@@ -156,11 +156,21 @@ do not substitute whole-profile replacement or array-index matching.
 - Relevant `ProfileEditor` integration tests; touch its production code only
   if required by the representation change.
 - Existing `apps/web/e2e/tests/profile-edit.spec.ts` and owning frontend/QA docs.
+- Product QA exposed a shared Plate click race: synchronize the actual native
+  range into Slate before publishing audit-line selection. Keep noneditable,
+  invalid and cross-editor ranges guarded. Scope Font selector colors to the
+  existing toolbar themes; preserve normal browser typing and axe checks.
+- Narrow test-only API/launcher prevention: shared API fixtures explicitly
+  fake/deny irrelevant dispatch, launcher tests copy the script into disposable
+  roots with controlled shell environments, and Python payload setup uses
+  isolated interpreter flags plus owned paths. Product runtime policy is unchanged.
 
 ### Acceptance evidence
 
-1. Saving preserves unknown nested fields, unedited fields and the current
-   request schema/field names. Profile and style serialize at the boundary.
+1. The outgoing save request preserves unknown nested fields, unedited fields
+   and the current request schema/field names. Profile and style serialize at
+   the boundary. Existing server validation/normalization remains unchanged;
+   this does not add storage for unsupported fields.
 2. Incomplete numeric/date input remains editable; invalid chronological dates
    prevent save with the existing useful validation feedback.
 3. An unrelated boxed edit plus a Plate edit both survive. Conflicting edits
@@ -168,7 +178,9 @@ do not substitute whole-profile replacement or array-index matching.
 4. Deletion, splitting, reordering and undo retain source-bound targeting;
    punctuation/digits and formatting-only changes preserve current semantics.
 5. A stale autosave response or refreshed initial prop cannot erase newer
-   local edits. Save/reload retains exact synthetic values and ordering.
+   local edits. Real SQLite save/reload retains supported synthetic values and
+   ordering. The isolated preview seam generates escaped, semantically bound
+   HTML from each current stored profile; no Python/PDF renderer is needed.
 6. `/profile` and `/preferences` retain applicable controls, accessibility,
    dirty state and user-visible validation; no profile persistence behavior
    or discovery-setting behavior changes.
@@ -320,9 +332,15 @@ For phases 1 and 2, the command set is:
   (focused file selection during implementation; complete web suite for the
   final frontend phase).
 - `corepack pnpm --filter @jobctrl/web test-d` and `corepack pnpm web:build`.
-- `corepack pnpm --filter @jobctrl/web e2e -- tests/artifact-comparison.spec.ts`
-  and, for phase 2, `tests/profile-edit.spec.ts`, extending these fixtures to
-  prove the changed race/preservation behavior.
+- Run the reviewed owned-environment browser runner with child command
+  `corepack pnpm --filter @jobctrl/web exec playwright test --config=e2e/playwright.config.ts tests/artifact-comparison.spec.ts --project=chromium --retries=0 --output=<owned-results>`.
+  Phase 2 uses
+  `corepack pnpm --filter @jobctrl/web exec playwright test --config=e2e/playwright.config.ts tests/profile-edit.spec.ts --grep 'structured profile persistence' --project=chromium --retries=0 --output=<owned-results>`.
+  After the shared Plate caret correction, cumulative frontend QA selects both
+  files with `--grep 'structured profile persistence|apply review compares accepted artifact|artifact full-page detail|late saved snapshot|a delayed seed snapshot'`
+  (six Chromium scenarios).
+  The runner establishes the guarded environment and output path before any
+  import; these fixtures prove the changed race/preservation behavior.
 - Build Storybook and run the relevant browser/a11y coverage for touched
   mounted editors/stories. Existing critical/serious violations cannot be
   silently carried into the changed flow.
@@ -356,7 +374,7 @@ Update this table with actual results; do not mark proposals implemented.
 | Phase | PR and head | Deleted mechanism | Tests and product proof | Review / QA |
 | --- | --- | --- | --- | --- |
 | 1 | [#865](https://github.com/ebarti/JobCtrl/pull/865); reviewed implementation `2428ce2dd` | View-owned five-snapshot draft selector and reply merger removed; cache mutation publication reconciles saved state | Original focused web/type checks and web/API/Storybook/docs builds passed; promotion fix passed 71 affected tests and all four isolated Chromium scenarios with scoped axe clean | The promotion High passed independent review and QA at `2428ce2dd`; the pending-create and cached-job isolation corrections passed independent review at `55fa84f0`; cumulative synchronized-head QA remains pending |
-| 2 | Pending | Pending | Pending | Pending |
+| 2 | [#866](https://github.com/ebarti/JobCtrl/pull/866); validated head `a8bb11f3e` | Form/editor/projector JSON round trips removed; object drafts preserve original values and serialize at the request boundary | 61 focused tests; full web 323 files/2020 tests, 13 type tests, web/API checks and web/Storybook builds pass. Docs build and pure preview-fixture test pass. Full API suite deliberately run through the reviewed owned pre-import environment: 59 files/828 tests PASS. | PR #866 records final independent review and QA PASS at `a8bb11f3e`: six cumulative browser scenarios and three scoped axe scans passed, with all applicable CI successful. The later [published review](https://github.com/ebarti/JobCtrl/pull/866#pullrequestreview-5126582837) also reports Gate PASS, but did not rerun those browser scenarios; their evidence remains the author-reported isolated run. Diagnostic profile coverage includes real save/reload, entry order and scoped axe after fixing the native-caret publication race and toolbar Select colors. Full web suite and web types/build/Storybook rechecked after the shared owner correction; the new native-caret regression and affected Profile/Apply suites pass 96 tests. Renderer-class and line-end fixtures retain explicit caret assertions |
 | 3 | Pending | Pending | Pending | Pending |
 | 4 | Pending | Pending | Pending | Pending |
 

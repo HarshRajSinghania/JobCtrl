@@ -96,6 +96,14 @@ highlight boxes. The action must not save the
 profile, template, or review draft; call a generation endpoint; register or
 replace an artifact; or change Apply approval state.
 
+For Profile Plate text projection, first click an experience bullet's actual
+text while the editor has no selection. Confirm the native caret stays inside
+that line when its audit highlight appears; moving to the line end and typing
+must update that bullet, not the resume header. Include the Font selector in
+scoped axe checks: the trigger and value must use the resume toolbar's matching
+foreground/background in both light and dark app themes, including the themed
+Apply review toolbar.
+
 For Profile Plate text projection, edit an experience bullet or non-empty
 position summary in the Plate document, switch to **Profile data**, and verify
 the matching boxed field contains the same unsaved value and the normal Profile
@@ -107,6 +115,12 @@ and verify both changes survive. If the boxed editor removes or changes the
 same bullet first, the Plate projection must preserve the boxed structure and
 surface a conflict. A formatting-only change or edit to a composite
 company/location/title/date line must not create a guessed profile-field edit.
+Profile object-draft regression tests also verify unknown nested fields and raw
+numeric strings survive in the outgoing request. Backend schema normalization
+is unchanged. The isolated profile browser fixture uses real GET/PATCH and
+SQLite persistence for supported values/order, with deterministic preview HTML
+bound to each current stored profile; it must not start Python or provider work.
+
 Verify the Size control displays its relative value as a percentage (100% at
 the resume default) with high-contrast text rather than exposing the internal
 unitless scale. Verify experience entries render newest-first and education
