@@ -1,1 +1,97 @@
-PLACEHOLDER3
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, reopened, transferred]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to triage manually.
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    name: Label issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out classifier
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            scripts/issue-triage.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Apply triage labels
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require("node:url");
+            const path = require("node:path");
+            const { classifyIssue, LABEL_DEFINITIONS } = await import(
+              pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, "scripts/issue-triage.mjs")).href
+            );
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = context.payload.issue?.number ?? Number(core.getInput("issue_number"));
+
+            const { data: issue } = await github.rest.issues.get({
+              owner,
+              repo,
+              issue_number: issueNumber,
+            });
+
+            async function ensureLabel(name) {
+              const definition = LABEL_DEFINITIONS[name];
+              if (!definition) {
+                return;
+              }
+
+              try {
+                await github.rest.issues.updateLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: definition.color,
+                  description: definition.description,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: definition.color,
+                  description: definition.description,
+                });
+              }
+            }
+
+            const currentLabels = issue.labels.map((label) => label.name);
+            const finalLabels = classifyIssue({
+              title: issue.title ?? "",
+              body: issue.body ?? "",
+              currentLabels,
+            });
+
+            for (const label of finalLabels) {
+              await ensureLabel(label);
+            }
+
+            if (finalLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issue.number,
+                labels: finalLabels,
+              });
+            }
