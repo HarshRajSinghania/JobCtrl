@@ -657,3 +657,40 @@ def test_smartextract_keeps_route_guard_through_html_capture(monkeypatch: pytest
     assert page.local_aborted
     assert intel["page_title"] == ""
     assert "full_html" not in intel
+
+
+@pytest.mark.parametrize("denial_phase", ["before_capture", "after_capture"])
+def test_live_chrome_preserves_typed_destination_denial(
+    monkeypatch: pytest.MonkeyPatch, denial_phase: str,
+) -> None:
+    """Both live-capture checks must use the shared typed fetch-failure path."""
+    url = "https://jobs.example/role"
+    validation_calls: list[str] = []
+    capture_calls: list[str] = []
+
+    def validate(destination: str) -> PublicUrlDecision:
+        validation_calls.append(destination)
+        address = "93.184.216.34" if denial_phase == "after_capture" and len(validation_calls) == 1 else "10.0.0.5"
+        return validate_public_http_url(destination, resolver=_resolver_for(address))
+
+    def capture(destination: str, **_kwargs: object) -> SimpleNamespace:
+        capture_calls.append(destination)
+        return SimpleNamespace(final_url=url)
+
+    def reject_extraction(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("destination denial must stop before snapshot extraction")
+
+    monkeypatch.setattr(detail, "validate_public_http_url", validate)
+    monkeypatch.setattr(detail, "_live_result_to_detail_page", reject_extraction)
+    result = detail.scrape_detail_page_via_live_chrome(
+        SimpleNamespace(rendered_page=capture), url, session=offline_session(),
+    )
+
+    assert capture_calls == ([url] if denial_phase == "after_capture" else [])
+    assert len(validation_calls) == (2 if denial_phase == "after_capture" else 1)
+    assert result["status"] == "blocked"
+    assert result["security_outcome"] == "unsafe_url"
+    assert result["fetch_failure_kind"] == "dns_non_public"
+    assert result["blocked_url"] == url
+    assert "non-public" in result["error"]
+    assert not detail._detail_failure_retryable(result)

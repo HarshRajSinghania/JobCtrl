@@ -18,6 +18,7 @@ from jobctrl.domain.discovery.execution import (
 from jobctrl.domain.errors import JobCtrlError, to_application_error
 from jobctrl.domain.events.operations import PipelineStepDetailCode, PipelineStepKind
 from jobctrl.domain.identifiers import JobId
+from jobctrl.enrichment.activities import _ActivityCancellationEvent
 from jobctrl.infrastructure.temporal.pipeline_step_lifecycle import (
     PipelineStepScope,
     begin_pipeline_step_attempt,
@@ -356,13 +357,13 @@ async def discovery_enrichment_activity(
         )
     )
 
-    from jobctrl.enrichment.activities import _ActivityCancellationEvent
-
     # Finishing the source producers cancels the live consumer before the
     # terminal enrichment pass. That activity stop is a handoff, not a user
     # cancellation of the job. Actual workflow cancellation is settled by the
     # exact-run cancellation reconciler after the workflow records its outcome.
-    cancel_event = _ActivityCancellationEvent(terminal_on_cancel=not payload.stream_while_discovering)
+    cancel_event = _ActivityCancellationEvent(
+        terminal_on_cancel=not payload.stream_while_discovering,
+    )
     on_job_enriched = _build_per_job_handoff(payload)
     try:
         info = activity.info()

@@ -24,6 +24,7 @@ from jobctrl.domain.scoring import ScoringCriteria
 from jobctrl.domain.materials.use_cases import TailorResumeUseCase
 from jobctrl.enrichment import detail
 from jobctrl.enrichment.activities import enrich_activity, cancel_enrichment_cohort_activity
+from jobctrl.infrastructure.discovery import live_browser
 from jobctrl.infrastructure.preparation_recovery import (
     recover_preparation_state_activity,
     cancel_preparation_state_activity,
@@ -41,10 +42,10 @@ from jobctrl.scoring.activities import score_activity
 from jobctrl.state import set_stage_state
 from .temporal_env import local_env
 from .test_automatic_preparation import _job, _stage
-from .test_discover_reliability import _FakePlaywright, _long_description
+from .test_discover_reliability import _long_description
 from .test_v7_score_runtime import _StrongLlm, _profile_snapshot
 from .test_scorer import _employer_analysis
-from .politeness_helpers import offline_gateway
+from .politeness_helpers import AllowAllRobots, offline_gateway
 
 ACTIVITIES = [
     check_spend_budget,
@@ -72,7 +73,35 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(
         WorkflowEnvironment, "start_local", lambda: original_start(dev_server_existing_path=shutil.which("temporal"))
     )
-    monkeypatch.setattr(detail, "sync_playwright", lambda: _FakePlaywright())
+    def reject_playwright():
+        pytest.fail("Temporal enrichment must use the live Chrome transport")
+
+    # Keep the real readiness check but isolate its HTTP transport too: page
+    # capture and robots doubles alone still allow a request to the owner's API.
+    api_url = "http://127.0.0.1:1"
+    network_attempts = []
+
+    def reject_network(*args, **kwargs):
+        network_attempts.append((args, kwargs))
+        raise AssertionError("recovery QA must not contact a real browser API")
+
+    def browser_transport(method, url, data, headers, timeout):
+        assert (method, url, data) == (
+            "GET", f"{api_url}/v1/discovery/browser-extension/status", None,
+        )
+        assert "Authorization" not in headers
+        return 200, b'{"ok":true,"connected":true}'
+
+    def browser_client(execution, **kwargs):
+        return live_browser.LiveChromeDiscoveryClient(
+            execution, **kwargs, app_dir=tmp_path,
+            api_base_url=api_url, transport=browser_transport,
+        )
+
+    monkeypatch.setattr(live_browser, "_urllib_transport", reject_network)
+    monkeypatch.setattr(detail, "LiveChromeDiscoveryClient", browser_client)
+    monkeypatch.setattr(detail, "sync_playwright", reject_playwright)
+    monkeypatch.setattr(detail, "LiveChromeRobotsCache", lambda _browser: AllowAllRobots())
     monkeypatch.setattr(detail, "PolitenessGateway", offline_gateway)
     scrape_calls = []
 
@@ -90,7 +119,7 @@ def world(tmp_path, monkeypatch):
             "http_status": 200,
         }
 
-    monkeypatch.setattr(detail, "scrape_detail_page", synthetic_scrape)
+    monkeypatch.setattr(detail, "scrape_detail_page_via_live_chrome", synthetic_scrape)
     llm = _StrongLlm()
     original_score = scorer.score_job_by_id
 
@@ -110,6 +139,7 @@ def world(tmp_path, monkeypatch):
     yield SimpleNamespace(conn=connection, path=db_path, app=tmp_path, llm=llm, scrape_calls=scrape_calls)
     shutdown_activity_executors()
     database.close_connection(db_path)
+    assert network_attempts == []
 
 
 def seed_for_stage(world, number, stage):
@@ -651,7 +681,7 @@ async def test_terminated_enrichment_releases_exact_owner_and_fences_late_provid
     leases = []
     original_claim = enrichment_activities._claim_activity_enrichment_lease
     original_run = enrichment_activities._run_selected_enrichment
-    original_scrape = detail.scrape_detail_page
+    original_scrape = detail.scrape_detail_page_via_live_chrome
 
     def observe_claim(*args, **kwargs):
         lease = original_claim(*args, **kwargs)
@@ -676,7 +706,7 @@ async def test_terminated_enrichment_releases_exact_owner_and_fences_late_provid
     monkeypatch.setattr(enrichment_activities, "_claim_activity_enrichment_lease", observe_claim)
     monkeypatch.setattr(enrichment_activities, "_run_selected_enrichment", observe_run)
     if not committed:
-        monkeypatch.setattr(detail, "scrape_detail_page", late_provider)
+        monkeypatch.setattr(detail, "scrape_detail_page_via_live_chrome", late_provider)
     queue = f"qa-enrich-orphan-{uuid.uuid4()}"
     async with local_env() as env:
         assert await tick(env.client, world, queue) == 1
