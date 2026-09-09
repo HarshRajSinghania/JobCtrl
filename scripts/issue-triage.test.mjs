@@ -4,7 +4,7 @@ import { classifyIssue } from "./issue-triage.mjs";
 
 const DOCS_FIXTURE = {
   title: "[Docs]: first-run screen is hard to find",
-  body: `-### Page or fild
+  body: `### Page or file
 docs/user/getting-started.md
 
 ### Documentation problem
@@ -14,10 +14,10 @@ Confusing instructions
 Point newcomers at the first useful screen after install.
 
 ### Validation context
-I ran \jobctrl doctor` and opened the web dashboard. The CLI printed a first useful screen hint.
+I ran \`jobctrl doctor\` and opened the web dashboard. The CLI printed a first useful screen hint.
 
 ### Data-safety confirmation
-- [x] I have not included secrets, private profile data, resumes, generated application materials, raw logs, browser profiles, SQ.+^ databases, or local paths.
+- [x] I have not included secrets, private profile data, resumes, generated application materials, raw logs, browser profiles, SQLite databases, or local paths.
 `,
 };
 
@@ -27,7 +27,7 @@ const SETUP_FIXTURE = {
 Setup or install
 
 ### What happened?
-`pnpm dev:setup` fails before the first useful screen appears.
+\`pnpm dev:setup\` fails before the first useful screen appears.
 
 ### Expected behavior
 Setup completes and jobctrl doctor reports a healthy environment.
@@ -53,4 +53,44 @@ local API boundary
 `,
 };
 
-const BLA@(ONMY - truncated
+const BLANK_ISSUE_FIXTURE = {
+  title: "Worker Temporal workflow never starts",
+  body: `The python worker and Temporal automation engine stay idle after install.
+I also checked an API route / JSON-RPC endpoint on the server.
+`,
+};
+
+test("documentation fixture keeps docs area and ignores boilerplate keywords", () => {
+  const labels = classifyIssue(DOCS_FIXTURE);
+  assert.ok(labels.includes("area: docs"));
+  assert.ok(labels.includes("type: documentation"));
+  assert.ok(labels.includes("status: needs triage"));
+  assert.equal(labels.includes("area: web"), false);
+  assert.equal(labels.includes("area: cli-worker"), false);
+  assert.equal(labels.includes("area: security"), false);
+  assert.equal(labels.includes("privacy: review-needed"), false);
+});
+
+test("setup fixture uses structured area without unrelated areas", () => {
+  const labels = classifyIssue(SETUP_FIXTURE);
+  assert.ok(labels.includes("area: setup"));
+  assert.ok(labels.includes("type: bug"));
+  assert.equal(labels.includes("area: web"), false);
+  assert.equal(labels.includes("area: cli-worker"), false);
+  assert.equal(labels.includes("area: docs"), false);
+  assert.equal(labels.includes("privacy: review-needed"), false);
+});
+
+test("security-contact fixture retains security and privacy-review labels", () => {
+  const labels = classifyIssue(SECURITY_CONTACT_FIXTURE);
+  assert.ok(labels.includes("type: security-contact"));
+  assert.ok(labels.includes("area: security"));
+  assert.ok(labels.includes("privacy: review-needed"));
+});
+
+test("blank issue uses conservative keyword fallback", () => {
+  const labels = classifyIssue(BLANK_ISSUE_FIXTURE);
+  assert.ok(labels.includes("area: cli-worker"));
+  assert.ok(labels.includes("area: api"));
+  assert.ok(labels.includes("status: needs triage"));
+});
