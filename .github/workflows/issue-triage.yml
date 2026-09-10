@@ -21,26 +21,17 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Check out classifier
-        uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: |
-            scripts/issue-triage.mjs
-          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Apply triage labels
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { pathToFileURL } = require("node:url");
-            const path = require("node:path");
-            const { classifyIssue, LABEL_DEFINITIONS } = await import(
-              pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, "scripts/issue-triage.mjs")).href
-            );
-
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const issueNumber = context.payload.issue?.number ?? Number(core.getInput("issue_number"));
+            const issueNumber = context.payload.issue?.number ?? Number(context.payload.inputs?.issue_number);
 
             const { data: issue } = await github.rest.issues.get({
               owner,
@@ -48,8 +39,79 @@ jobs:
               issue_number: issueNumber,
             });
 
+            const labelDefinitions = {
+              "status: needs triage": {
+                color: "fbca04",
+                description: "Needs maintainer review and prioritization.",
+              },
+              "type: bug": {
+                color: "d73a4a",
+                description: "Broken or incorrect behavior.",
+              },
+              "type: documentation": {
+                color: "0075ca",
+                description: "Documentation issue or improvement.",
+              },
+              "type: feature": {
+                color: "a2eeef",
+                description: "New capability or product improvement.",
+              },
+              "type: qa-regression": {
+                color: "b60205",
+                description: "Visible regression in a product or QA flow.",
+              },
+              "type: question": {
+                color: "d876e3",
+                description: "Usage, setup, or contributor-workflow question.",
+              },
+              "type: security-contact": {
+                color: "ee0701",
+                description: "Public request for a private vulnerability contact path.",
+              },
+              "area: api": {
+                color: "c2e0c6",
+                description: "TypeScript API or API contract.",
+              },
+              "area: browser-extension": {
+                color: "c2e0c6",
+                description: "Browser extension capture or autofill.",
+              },
+              "area: cli-worker": {
+                color: "c2e0c6",
+                description: "Python CLI, worker, or automation engine.",
+              },
+              "area: docs": {
+                color: "c2e0c6",
+                description: "Repository or published documentation.",
+              },
+              "area: github": {
+                color: "c2e0c6",
+                description: "GitHub workflows, templates, or contribution metadata.",
+              },
+              "area: setup": {
+                color: "c2e0c6",
+                description: "Install, setup, or local environment.",
+              },
+              "area: security": {
+                color: "c2e0c6",
+                description: "Security posture or private-reporting coordination.",
+              },
+              "area: web": {
+                color: "c2e0c6",
+                description: "React web app or frontend product flow.",
+              },
+              "privacy: review-needed": {
+                color: "5319e7",
+                description: "Maintainers should check the public issue for sensitive data exposure.",
+              },
+              "release: possible-blocker": {
+                color: "e99695",
+                description: "May block a public release, install path, or documented first-run flow.",
+              },
+            };
+
             async function ensureLabel(name) {
-              const definition = LABEL_DEFINITIONS[name];
+              const definition = labelDefinitions[name];
               if (!definition) {
                 return;
               }
@@ -76,13 +138,8 @@ jobs:
               }
             }
 
-            const currentLabels = issue.labels.map((label) => label.name);
-            const finalLabels = classifyIssue({
-              title: issue.title ?? "",
-              body: issue.body ?? "",
-              currentLabels,
-            });
-
+            const { labelsForIssue } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/issue-triage.mjs`);
+            const finalLabels = labelsForIssue(issue);
             for (const label of finalLabels) {
               await ensureLabel(label);
             }

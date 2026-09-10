@@ -1,198 +1,53 @@
-export const LABEL_DEFINITIONS = {
-  "status: needs triage": {
-    color: "fbca04",
-    description: "Needs maintainer review and prioritization.",
-  },
-  "type: bug": {
-    color: "d73a4a",
-    description: "Broken or incorrect behavior.",
-  },
-  "type: documentation": {
-    color: "0075ca",
-    description: "Documentation issue or improvement.",
-  },
-  "type: feature": {
-    color: "a2eeef",
-    description: "New capability or product improvement.",
-  },
-  "type: qa-regression": {
-    color: "b60205",
-    description: "Visible regression in a product or QA flow.",
-  },
-  "type: question": {
-    color: "d876e3",
-    description: "Usage, setup, or contributor-workflow question.",
-  },
-  "type: security-contact": {
-    color: "ee0701",
-    description: "Public request for a private vulnerability contact path.",
-  },
-  "area: api": {
-    color: "c2e0c6",
-    description: "TypeScript API or API contract.",
-  },
-  "area: browser-extension": {
-    color: "c2e0c6",
-    description: "Browser extension capture or autofill.",
-  },
-  "area: cli-worker": {
-    color: "c2e0c6",
-    description: "Python CLI, worker, or automation engine.",
-  },
-  "area: docs": {
-    color: "c2e0c6",
-    description: "Repository or published documentation.",
-  },
-  "area: github": {
-    color: "c2e0c6",
-    description: "GitHub workflows, templates, or contribution metadata.",
-  },
-  "area: setup": {
-    color: "c2e0c6",
-    description: "Install, setup, or local environment.",
-  },
-  "area: security": {
-    color: "c2e0c6",
-    description: "Security posture or private-reporting coordination.",
-  },
-  "area: web": {
-    color: "c2e0c6",
-    description: "React web app or frontend product flow.",
-  },
-  "privacy: review-needed": {
-    color: "5319e7",
-    description: "Maintainers should check the public issue for sensitive data exposure.",
-  },
-  "release: possible-blocker": {
-    color: "e99695",
-    description: "May block a public release, install path, or documented first-run flow.",
-  },
-};
+const areas = new Map([
+  ['Web app', 'web'], ['Dashboard or Jobs', 'web'], ['Apply Review', 'web'],
+  ['Artifacts', 'web'], ['Profile or Settings', 'web'],
+  ['TypeScript API', 'api'], ['Python worker or CLI', 'cli-worker'],
+  ['CLI or worker', 'cli-worker'], ['Browser extension', 'browser-extension'],
+  ['Documentation', 'docs'], ['Documentation site', 'docs'],
+  ['Setup or install', 'setup'], ['GitHub workflows', 'github'],
+  ['GitHub workflow', 'github'], ['Contributor workflow', 'github'],
+]);
+const types = new Map([
+  ['bug', 'bug'], ['feature', 'feature'], ['qa', 'qa-regression'],
+  ['docs', 'documentation'], ['question', 'question'],
+  ['security contact', 'security-contact'],
+]);
 
-const TYPE_RULES = [
-  ["type: security-contact", /\[security contact\]|security contact request|minimal public summary/],
-  ["type: qa-regression", /\[qa\]|expected invariant|regression surface|what broke\?/],
-  ["type: documentation", /\[docs\]|page or file|documentation problem|broken link/],
-  ["type: feature", /\[feature\]|problem to solve|proposed behavior|data, safety, or automation impact/],
-  ["type: bug", /\[bug\]|what happened\?|expected behavior|reproduction steps/],
-  ["type: question", /\[question\]|question or support|contributor workflow/],
-];
-
-const AREA_KEYWORD_RULES = [
-  ["area: web", /web app|dashboard|jobs|apply review|artifacts|profile|settings|frontend|react|vite/],
-  ["area: api", /typescript api|api route|json-rpc|sse|server|read model|endpoint/],
-  ["area: cli-worker", /python worker|worker|cli|jobctrl doctor|temporal|automation engine/],
-  ["area: browser-extension", /browser extension|extension|capture|autofill|ats/],
-  ["area: docs", /documentation|docs site|readme|docs\//],
-  ["area: setup", /setup|install|pnpm dev:setup|environment|first run/],
-  ["area: github", /github workflow|github workflows|actions|ci|dco|pull request|issue template/],
-  ["area: security", /security|vulnerability|credential|secret|token|private contact/],
-];
-
-const STRUCTURED_AREA_LABELS = {
-  "web app": "area: web",
-  "dashboard or jobs": "area: web",
-  "apply review": "area: web",
-  artifacts: "area: web",
-  "profile or settings": "area: web",
-  "typescript api": "area: api",
-  "python worker or cli": "area: cli-worker",
-  "cli or worker": "area: cli-worker",
-  "browser extension": "area: browser-extension",
-  documentation: "area: docs",
-  "documentation site": "area: docs",
-  "setup or install": "area: setup",
-  setup: "area: setup",
-  "github workflows": "area: github",
-  "github workflow": "area: github",
-};
-
-function stripBoilerplate(body) {
-  return (body ?? "")
-    .replace(/### Data-safety confirmation[\s\S]*?(?=\n### |$)/gi, "")
-    .replace(/### Public issue confirmation[\s\S]*?(?=\n### |$)/gi, "")
-    .replace(/### Confirmation[\s\S]*?(?=\n### |$)/gi, "");
+function fields(body) {
+  const result = new Map();
+  for (const match of body.replaceAll('\r\n', '\n').matchAll(/^### ([^\n]+)\n([\s\S]*?)(?=^### |$(?![\s\S]))/gm)) {
+    const key = match[1].trim();
+    // Ambiguous duplicated fields are left for triage.
+    result.set(key, result.has(key) ? null : match[2].trim());
+  }
+  return result;
 }
 
-function extractFormValue(body, heading) {
-  const pattern = new RegExp(
-    `### ${heading}\s*\n+([^\n#][^\n]*)`,
-    "i",
-  );
-  const match = body.match(pattern);
-  return match?.[1]?.trim() ?? "";
-}
-
-function structuredAreaLabel(title, body) {
-  if (/\[docs\]/i.test(title) || extractFormValue(body, "Page or file") || extractFormValue(body, "Documentation problem")) {
-    return "area: docs";
+export function labelsForIssue(issue) {
+  const current = new Set((issue.labels ?? []).map(label => typeof label === 'string' ? label : label.name));
+  const additions = new Set();
+  if (![...current].some(label => label.startsWith('status: '))) additions.add('status: needs triage');
+  const title = issue.title ?? '';
+  const declaredType = types.get(title.match(/^\[(bug|feature|qa|docs|question|security contact)\]:/i)?.[1].toLowerCase());
+  if (declaredType && ![...current].some(label => label.startsWith('type: '))) additions.add(`type: ${declaredType}`);
+  const form = fields(issue.body ?? '');
+  const selected = ['Affected area', 'Area', 'Regression surface'].filter(key => form.has(key));
+  if (selected.length === 1) {
+    const area = areas.get(form.get(selected[0]));
+    if (area) additions.add(`area: ${area}`);
+  } else if (selected.length === 0 && ![...current].some(label => label.startsWith('area: '))) {
+    // Title-only fallback for blank issues. Never scan safety boilerplate.
+    if (/\b(?:docs?|readme|documentation)\b/i.test(title)) additions.add('area: docs');
+    else if (/\b(?:install|setup)\b/i.test(title)) additions.add('area: setup');
   }
-  if (/\[security contact\]/i.test(title) || extractFormValue(body, "Minimal public summary")) {
-    return "area: security";
+  if (current.has('type: security-contact') || additions.has('type: security-contact')) {
+    additions.add('area: security');
+    additions.add('privacy: review-needed');
+  } else if (/\b(?:security|vulnerabilit(?:y|ies)|secrets?|credentials?|tokens?|api keys?|private data)\b/i.test(title)) {
+    additions.add('privacy: review-needed');
   }
-  const selections = [
-    extractFormValue(body, "Affected area"),
-    extractFormValue(body, "Regression surface"),
-  ];
-
-  for (const raw of selections) {
-    const key = raw.toLowerCase();
-    if (!key || key === "unsure" || key === "other") {
-      continue;
-    }
-    if (STRUCTURED_AREA_LABELS[key]) {
-      return STRUCTURED_AREA_LABELS[key];
-    }
+  if (/^- \[[xX]\] This appears to block a public release, source install, or documented first-run flow\.$/m.test(form.get('Release impact') ?? '')) {
+    additions.add('release: possible-blocker');
   }
-  return null;
-}
-
-export function classifyIssue({ title = "", body = "", currentLabels = [] } = {}) {
-  const userBody = stripBoilerplate(body);
-  const haystack = `${title}\n${userBody}`.toLowerCase();
-  const titleText = title.toLowerCase();
-  const current = new Set(currentLabels);
-  const labelsToAdd = new Set();
-
-  if (![...current].some((label) => label.startsWith("status: "))) {
-    labelsToAdd.add("status: needs triage");
-  }
-
-  for (const [label, pattern] of TYPE_RULES) {
-    if (pattern.test(haystack) && ![...current].some((existing) => existing.startsWith("type: "))) {
-      labelsToAdd.add(label);
-      break;
-    }
-  }
-
-  const structuredArea = structuredAreaLabel(title, userBody);
-  if (structuredArea) {
-    labelsToAdd.add(structuredArea);
-  } else {
-    for (const [label, pattern] of AREA_KEYWORD_RULES) {
-      if (pattern.test(haystack)) {
-        labelsToAdd.add(label);
-      }
-    }
-  }
-
-  if (/release blocker|blocks a public release|public release|first-run flow|source install/.test(haystack)) {
-    labelsToAdd.add("release: possible-blocker");
-  }
-
-  const securityContact =
-    labelsToAdd.has("type: security-contact") || current.has("type: security-contact");
-  if (
-    securityContact ||
-    /\b(security|vulnerability|secret|credential|token|api key|private data)\b/.test(titleText)
-  ) {
-    labelsToAdd.add("privacy: review-needed");
-  }
-
-  if (securityContact) {
-    labelsToAdd.add("area: security");
-    labelsToAdd.add("privacy: review-needed");
-  }
-
-  return [...labelsToAdd].filter((label) => !current.has(label)).sort();
+  return [...additions].filter(label => !current.has(label));
 }
